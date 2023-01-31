@@ -1,2 +1,2 @@
 # Kaggle_competions
-Repository to store notebooks from past competitions
+Repository to store my notebooks from past competitions
