@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+playground-series-s3e4/catboost_info/
+
+playground-series-s3e4/datasets/
+
+playground-series-s3e4/submissions/
