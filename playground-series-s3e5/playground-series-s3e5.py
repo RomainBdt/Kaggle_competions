@@ -1,184 +1,307 @@
 # %%
 import pandas as pd
-from sklearn.model_selection import train_test_split, cross_val_score, StratifiedShuffleSplit, StratifiedKFold
-import time
-import seaborn as sns
-import matplotlib.pyplot as plt
-from sklearn.metrics import roc_auc_score, roc_curve, auc
-from lightgbm import LGBMClassifier
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, AdaBoostClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier, StackingClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import LogisticRegression, RidgeClassifier, RidgeClassifierCV, PassiveAggressiveClassifier, SGDClassifier
-from sklearn.naive_bayes import GaussianNB, BernoulliNB, MultinomialNB
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
-from sklearn.svm import SVC, LinearSVC
-from sklearn.neural_network import MLPClassifier
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import BaggingClassifier
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import numpy as np
+import time
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+from sklearn.metrics import cohen_kappa_score, make_scorer
+from sklearn.metrics import cohen_kappa_score
+from functools import partial
+import numpy as np
+import scipy as sp
+import matplotlib.pyplot as plt
+
+# import classifiers
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, AdaBoostClassifier, GradientBoostingClassifier, BaggingClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from lightgbm import LGBMClassifier
 from xgboost import XGBClassifier
 from catboost import CatBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression, RidgeClassifier, SGDClassifier, PassiveAggressiveClassifier, Perceptron, RidgeClassifier, LogisticRegression
+from sklearn.svm import SVC, LinearSVC, NuSVC
+from sklearn.naive_bayes import GaussianNB, BernoulliNB, MultinomialNB, ComplementNB
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis, LinearDiscriminantAnalysis
 
-import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
+# import regressors
+from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, AdaBoostRegressor, GradientBoostingRegressor, BaggingRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from lightgbm import LGBMRegressor
+from xgboost import XGBRegressor
+from catboost import CatBoostRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.linear_model import LinearRegression, Ridge, SGDRegressor, PassiveAggressiveRegressor, Perceptron, RidgeClassifier, LogisticRegression
+from sklearn.linear_model import Lasso, ElasticNet, Lars, BayesianRidge, ARDRegression, OrthogonalMatchingPursuit, HuberRegressor, TheilSenRegressor, RANSACRegressor
+from sklearn.linear_model import LassoLars, LassoLarsIC
+from sklearn.neural_network import MLPRegressor
+from sklearn.gaussian_process import GaussianProcessRegressor
 
 # %%
-train = pd.read_csv('train.csv')
-train.drop('id', axis=1, inplace=True)
-orig_train = pd.read_csv('creditcard.csv')
-X_test = pd.read_csv('test.csv')
-X_test.drop('id', axis=1, inplace=True)
+train = pd.read_csv('datasets/train.csv')
+train.drop('Id', axis=1, inplace=True)
+orig_train = pd.read_csv('datasets/WineQT.csv')
+orig_train.drop('Id', axis=1, inplace=True)
+X_test = pd.read_csv('datasets/test.csv')
+X_test.drop('Id', axis=1, inplace=True)
+len_test = X_test.shape[0]
 
-train = pd.concat([train, orig_train]).reset_index(drop=True)
+# Split data
+X_train, X_val = train_test_split(train, test_size=0.2, random_state=42, stratify=train['quality'])
+y_val = X_val.pop('quality')
 
-# Create a rolling difference feature on the time
-def add_time_diff(df):
-    df_time = df['Time'].copy().drop_duplicates().to_frame()
-    df_time['time_diff'] = df_time['Time'].diff().fillna(0)
-    df = pd.merge(df, df_time, how='left', on='Time')
-    return df['time_diff']
+# Add origin data
+X_train = pd.concat([X_train, orig_train]).reset_index(drop=True)
 
-seconds_per_day = 3600*24
-for df in [train, X_test]:
-    # df['time_diff'] = add_time_diff(df)
-    df['hour'] = df['Time'] % (24 * 3600) // 3600
-    df['day'] = (df['Time'] // (24 * 3600)) % 7
-    df = df.drop(['Time'], axis=1)
-    df['a0'] = df.Amount == 0
-    df['a1'] = df.Amount == 1
-    # df['V20_div_Amount'] = df.V20 / df.Amount
-    # df['V23_div_Amount'] = df.V23 / df.Amount
-    # df['V27_div_28'] = df.V27 / df.V28
-    # df['V20_div_Amount_div_V27_div_28'] = df['V20_div_Amount'] / df['V27_div_28']
-    # df['V23_div_Amount_div_V27_div_28'] = df['V23_div_Amount'] / df['V27_div_28']
+# # Outlier removal
+# print(X_train.shape)
+# X_train = X_train[X_train['volatile acidity'] <= 1.33]
+# X_train = X_train[X_train['citric acid'] <= 0.8]
+# X_train = X_train[X_train['residual sugar'] < 9]
+# X_train = X_train[X_train['chlorides'] <= 0.5]
+# X_train = X_train[X_train['total sulfur dioxide'] <= 200]
+# X_train = X_train[X_train['sulphates'] < 1.9]
+# X_train = X_train[X_train['alcohol'] <= 14]
+# print(X_train.shape)
+
+y_train = X_train.pop('quality')
+
+# Data preprocessing
+def add_features(df):
+    # From https://www.kaggle.com/competitions/playground-series-s3e5/discussion/383685
+    df['acidity_ratio'] = df['fixed acidity'] / df['volatile acidity']
+    df['free_sulfur/total_sulfur'] = df['free sulfur dioxide'] / df['total sulfur dioxide']
+    df['sugar/alcohol'] = df['residual sugar'] / df['alcohol']
+    df['alcohol/density'] = df['alcohol'] / df['density']
+    df['total_acid'] = df['fixed acidity'] + df['volatile acidity'] + df['citric acid']
+    df['sulphates/chlorides'] = df['sulphates'] / df['chlorides']
+    df['bound_sulfur'] = df['total sulfur dioxide'] - df['free sulfur dioxide']
+    df['alcohol/pH'] = df['alcohol'] / df['pH']
+    df['alcohol/acidity'] = df['alcohol'] / df['total_acid']
+    df['alkalinity'] = df['pH'] + df['alcohol']
+    df['mineral'] = df['chlorides'] + df['sulphates'] + df['residual sugar']
+    df['density/pH'] = df['density'] / df['pH']
+    df['total_alcohol'] = df['alcohol'] + df['residual sugar']
     
-train, val = train_test_split(train, test_size=0.2, random_state=42)
+    # From https://www.kaggle.com/competitions/playground-series-s3e5/discussion/382698
+    df['acid/density'] = df['total_acid']  / df['density']
+    df['sulphate/density'] = df['sulphates']  / df['density']
+    df['sulphates/acid'] = df['sulphates'] / df['volatile acidity']
+    df['sulphates*alcohol'] = df['sulphates'] * df['alcohol']
+    
+    return df
 
-X_train = train.drop(['Class'], axis=1)
-y_train = train['Class']
+for df in [X_train, X_val, X_test]:
+    df = add_features(df)
+    
+# Label encode
+for y in [y_train, y_val]:
+    y = y.map({3: 0, 4: 1, 5: 2, 6: 3, 7: 4, 8: 5})
 
-X_val = val.drop(['Class'], axis=1)
-y_val = val['Class']
+# Standardize
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# PCA (does not improve score)
+# from sklearn.decomposition import PCA
+# pca = PCA()
+# X_train = pca.fit_transform(X_train)
+# X_val = pca.transform(X_val)
+# X_test = pca.transform(X_test)
+
+# %% Classifiers
+
+# classifiers = {
+#     'LGBMClassifier': LGBMClassifier(random_state=42, n_jobs=-1),
+#     'XGBClassifier': XGBClassifier(random_state=42, n_jobs=-1),
+#     # 'CatBoostClassifier': CatBoostClassifier(random_state=42, silent=True),
+#     'RandomForestClassifier': RandomForestClassifier(random_state=42, n_jobs=-1),
+#     'ExtraTreesClassifier': ExtraTreesClassifier(random_state=42, n_jobs=-1),
+#     # 'AdaBoostClassifier': AdaBoostClassifier(random_state=42),
+#     'GradientBoostingClassifier': GradientBoostingClassifier(random_state=42),
+#     'BaggingClassifier': BaggingClassifier(random_state=42, n_jobs=-1),
+#     'KNeighborsClassifier': KNeighborsClassifier(n_jobs=-1),
+#     # 'DecisionTreeClassifier': DecisionTreeClassifier(random_state=42),
+#     'GaussianNB': GaussianNB(),
+#     'LinearDiscriminantAnalysis': LinearDiscriminantAnalysis(),
+#     'QuadraticDiscriminantAnalysis': QuadraticDiscriminantAnalysis(),
+#     'LogisticRegression': LogisticRegression(random_state=42, n_jobs=-1),
+#     'SVC': SVC(random_state=42, gamma='scale'),
+#     # 'NuSVC': NuSVC(random_state=42, probability=True, gamma='scale'),
+#     'LinearSVC': LinearSVC(random_state=42, max_iter=10000),
+#     'MLPClassifier': MLPClassifier(random_state=42, max_iter=1000),
+#     'RidgeClassifier': RidgeClassifier(random_state=42),
+#     # 'SGDClassifier': SGDClassifier(random_state=42, max_iter=1000, tol=1e-3),
+#     # 'PassiveAggressiveClassifier': PassiveAggressiveClassifier(random_state=42, max_iter=1000, tol=1e-3),
+#     # 'Perceptron': Perceptron(random_state=42, max_iter=1000, tol=1e-3),
+#     'GaussianProcessClassifier': GaussianProcessClassifier(random_state=42),
+#     # 'BernoulliNB': BernoulliNB(),
+#     # 'ComplementNB': ComplementNB(),
+#     # 'MultinomialNB': MultinomialNB(),
+#     # 'DummyClassifier': DummyClassifier(random_state=42),  
+# }
+
+# def scorer(estimator, X, y):
+#     y_pred = estimator.predict(X)
+#     return cohen_kappa_score(y, y_pred, weights='quadratic')
+
+# import time
+
+# results = []
+# cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+# print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format('Model', 'CV mean', 'CV std', 'CV min', 'Time', 'Train', 'Val'))
+# for model_name, model in classifiers.items():
+#     t0 = time.time()
+#     scores_cv = cross_val_score(model, X_train, y_train, cv=cv, scoring=scorer, n_jobs=-1)
+#     results.append(scores_cv)
+#     model.fit(X_train, y_train)
+#     score_train = scorer(model, X_train, y_train)
+#     score_val = scorer(model, X_val, y_val)
+#     row = ['%s' % model_name, 
+#            '%.3f' % scores_cv.mean(), 
+#            '%.3f' % scores_cv.std(),
+#            '%.3f' % (scores_cv.mean() - scores_cv.std()),
+#            '%.3f' % (time.time() - t0),
+#            '%.3f' % score_train,
+#            '%.3f' % score_val
+#            ]
+#     print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format(*row))
+
+# plt.figure(figsize=(25, 15))
+# plt.boxplot(results, labels=classifiers.keys(), showmeans=True)
+# plt.show()
 
 
-# %%
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-predictions_assembled_train = []
-predictions_assembled_val = []
-predictions_assembled_test = []
 
-# all sklearn models have a predict_proba method
-models = {
-    # "KNN": KNeighborsClassifier(),
-    # "HistGradientBoosting": HistGradientBoostingClassifier(),
-    # "Logistic Regression": LogisticRegression(class_weight='balanced', n_jobs=-1),
-    # "Random Forest": RandomForestClassifier(n_jobs=-1),
-    "XGBoost": XGBClassifier(eval_metric='logloss', use_label_encoder=False, verbosity=0),
-    "CatBoost": CatBoostClassifier(verbose=False, loss_function='Logloss', eval_metric='AUC'),
-    "LightGBM": LGBMClassifier(objective='binary'),
-    # "Extra Trees": ExtraTreesClassifier(n_jobs=-1),
-    # "AdaBoost": AdaBoostClassifier(),
-    # "Gradient Boosting": GradientBoostingClassifier(),
-    # "Decision Tree": DecisionTreeClassifier(),
-    # "Gaussian Naive Bayes": GaussianNB(),
-    # "Linear Discriminant Analysis": LinearDiscriminantAnalysis(),
-    # "Quadratic Discriminant Analysis": QuadraticDiscriminantAnalysis(),
-    # "Support Vector Machine": SVC(probability=True),
-    # "Linear Support Vector Machine": LinearSVC(),
-    # "Neural Network1": MLPClassifier(max_iter=5000, activation='relu', solver='adam', random_state=42),
-    # "Neural Network2": MLPClassifier(max_iter=5000, activation='relu', solver='sgd', random_state=42),
-    # "Neural Network3": MLPClassifier(max_iter=5000, activation='tanh', solver='adam', random_state=42),
-    # "Neural Network4": MLPClassifier(max_iter=5000, activation='tanh', solver='sgd'),
-    # "Neural Network5": MLPClassifier(max_iter=5000, activation='logistic', solver='adam', random_state=42),
-    # "Neural Network6": MLPClassifier(max_iter=5000, activation='logistic', solver='sgd'),
-    # "Neural Network7": MLPClassifier(max_iter=5000, activation='identity', solver='adam', random_state=42),
-    # "Neural Network8": MLPClassifier(max_iter=5000, activation='identity', solver='sgd', random_state=42),
-    # "Ridge Classifier": RidgeClassifier(),
-    # "Ridge Classifier with CV": RidgeClassifierCV(),
-    # "Passive Aggressive Classifier": PassiveAggressiveClassifier(),
-    # "SGD Classifier": SGDClassifier(loss='modified_huber'),
-    # "Bernoulli Naive Bayes": BernoulliNB(),
-    # "Calibrated Classifier LSVC": CalibratedClassifierCV(LinearSVC(), n_jobs=-1),
-    # "Calibrated Classifier Ridge": CalibratedClassifierCV(RidgeClassifier(), n_jobs=-1),
-    # "Bagging Classifier": BaggingClassifier(),
-    # "Multinomial Naive Bayes": MultinomialNB(),    
+# %% Regressors
+
+regressors = {
+    'LGBMRegressor1': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='gbdt'),
+    'LGBMRegressor2': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart'),
+    # 'LGBMRegressor3': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='goss'),
+    # 'LGBMRegressor4': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='rf'),
+    # 'LGBMRegressor5': LGBMRegressor(random_state=42, n_jobs=-1, class_weight='balanced'),
+    # 'LGBMRegressor6': LGBMRegressor(random_state=42, n_jobs=-1, subsample=0.7),
+    'LGBMRegressor7': LGBMRegressor(random_state=42, n_jobs=-1, colsample_bytree=0.7),
+    # 'LGBMRegressor8': LGBMRegressor(random_state=42, n_jobs=-1, subsample=0.7, colsample_bytree=0.7),
+    # 'XGBRegressor': XGBRegressor(random_state=42, n_jobs=-1),
+    # 'CatBoostRegressor': CatBoostRegressor(random_state=42, silent=True),
+    'RandomForestRegressor': RandomForestRegressor(random_state=42, n_jobs=-1),
+    'ExtraTreesRegressor': ExtraTreesRegressor(random_state=42, n_jobs=-1),
+    # 'AdaBoostRegressor': AdaBoostRegressor(random_state=42),
+    'GradientBoostingRegressor': GradientBoostingRegressor(random_state=42),
+    # 'BaggingRegressor': BaggingRegressor(random_state=42, n_jobs=-1),
+    # 'KNeighborsRegressor': KNeighborsRegressor(n_jobs=-1),
+    # 'DecisionTreeRegressor': DecisionTreeRegressor(random_state=42),
+    # 'GaussianProcessRegressor': GaussianProcessRegressor(random_state=42),
+    # 'MLPRegressor1': MLPRegressor(random_state=42, max_iter=1000, activation='relu', solver='adam'),
+    # 'MLPRegressor2': MLPRegressor(random_state=42, max_iter=1000, activation='relu', solver='lbfgs'),
+    # 'MLPRegressor3': MLPRegressor(random_state=42, max_iter=5000, activation='tanh', solver='adam'),
+    # 'MLPRegressor4': MLPRegressor(random_state=42, max_iter=1000, activation='tanh', solver='lbfgs'),
+    'MLPRegressor5': MLPRegressor(random_state=42, max_iter=5000, activation='logistic', solver='adam'),
+    # 'MLPRegressor6': MLPRegressor(random_state=42, max_iter=1000, activation='logistic', solver='lbfgs'),
+    # 'MLPRegressor7': MLPRegressor(random_state=42, max_iter=5000, activation='identity', solver='adam'),
+    # 'MLPRegressor8': MLPRegressor(random_state=42, max_iter=5000, activation='identity', solver='lbfgs'),
+    # 'Ridge': Ridge(random_state=42),
+    # 'SGDRegressor': SGDRegressor(random_state=42, max_iter=1000, tol=1e-3),
+    # 'PassiveAggressiveRegressor': PassiveAggressiveRegressor(random_state=42, max_iter=1000, tol=1e-3),
+    # 'Perceptron': Perceptron(random_state=42, max_iter=1000, tol=1e-3),
+    # 'LinearRegression': LinearRegression(),
+    # 'Lasso': Lasso(random_state=42),
+    # 'ElasticNet': ElasticNet(random_state=42),
+    # 'HuberRegressor': HuberRegressor(max_iter=1000),
+    # 'BayesianRidge': BayesianRidge(),
+    # 'ARDRegression': ARDRegression(),
+    # 'TheilSenRegressor': TheilSenRegressor(random_state=42),
+    # 'RANSACRegressor': RANSACRegressor(random_state=42),
+    # 'OrthogonalMatchingPursuit': OrthogonalMatchingPursuit(normalize=False),
+    # 'Lars': Lars(),
+    # 'LassoLars': LassoLars(),
+    # 'LassoLarsIC': LassoLarsIC(normalize=False),
 }
 
-# Scale the data
-s_scaler = StandardScaler()
-X_train_s = pd.DataFrame(s_scaler.fit_transform(X_train), 
-                                    columns=X_train.columns, 
-                                    index=X_train.index)
-X_val_s = pd.DataFrame(s_scaler.transform(X_val),
-                            columns=X_val.columns,
-                            index=X_val.index)
-X_test_s = pd.DataFrame(s_scaler.transform(X_test),
-                            columns=X_test.columns,
-                            index=X_test.index)
+class OptimizedRounder(object):
+    def __init__(self):
+        self.coef_ = 0
 
-mm_scaler = MinMaxScaler()
-X_train_mm = pd.DataFrame(mm_scaler.fit_transform(X_train), 
-                                    columns=X_train.columns, 
-                                    index=X_train.index)
-X_val_mm = pd.DataFrame(mm_scaler.transform(X_val),
-                            columns=X_val.columns,
-                            index=X_val.index)
-X_test_mm = pd.DataFrame(mm_scaler.transform(X_test),
-                            columns=X_test.columns,
-                            index=X_test.index)
+    def _kappa_loss(self, coef, X, y):
+        X_p = np.copy(X)
+        for i, pred in enumerate(X_p):
+            if pred < coef[0]:
+                X_p[i] = 3
+            elif pred >= coef[0] and pred < coef[1]:
+                X_p[i] = 4
+            elif pred >= coef[1] and pred < coef[2]:
+                X_p[i] = 5
+            elif pred >= coef[2] and pred < coef[3]:
+                X_p[i] = 6
+            elif pred >= coef[3] and pred < coef[4]:
+                X_p[i] = 7
+            else:
+                X_p[i] = 8
 
-# %%
-sample_size = 1000
-t0 = time.time()
-pred_test_index = pd.Series()
-for i, (train_index, test_index) in enumerate(skf.split(X_train, y_train)):
-    
-    # Get a subset of the training set
-    X = X_train_mm.iloc[train_index]
-    y = y_train.iloc[train_index]
-    
-    X_test_index = X_train_mm.iloc[test_index]
-    y_test_index = y_train.iloc[test_index]
-    
-    X_val_ = X_val_mm
-    X_test_ = X_test_mm
-    
-    # Create a balanced training set
-    X_balanced = pd.concat([X[y == 0].sample(sample_size, replace=True),
-                            X[y == 1].sample(sample_size, replace=True)])
-    y_balanced = y.loc[X_balanced.index]
-    
-    # Fit the model
-    model = StackingClassifier(
-        estimators = models.items(),
-        final_estimator = LogisticRegression(class_weight='balanced', n_jobs=-1),
-        # n_jobs=-1,
-        verbose=1,
-        passthrough=False,
-        )
-    model.fit(X_balanced, y_balanced)
-    
-    # Evaluate the model
-    print("roc auc score on validation set:", roc_auc_score(y_test_index, model.predict_proba(X_test_index)[:, 1]))
+        ll = cohen_kappa_score(y, X_p, weights='quadratic')
+        return -ll
 
-    # Save the predictions
-    predictions_assembled_val.append(model.predict_proba(X_val_)[:, 1])
-    predictions_assembled_test.append(model.predict_proba(X_test_)[:, 1])
-    
-t1 = time.time()
-print(f"fit time: {t1 - t0:.2f}s")
+    def fit(self, X, y):
+        loss_partial = partial(self._kappa_loss, X=X, y=y)
+        initial_coef = [3.5, 4.5, 5.5, 6.5, 7.5]
+        self.coef_ = sp.optimize.minimize(loss_partial, initial_coef, method='nelder-mead')
 
-print("Mean AUC on validation set:")
-print(roc_auc_score(y_val, pd.DataFrame(predictions_assembled_val).T.mean(axis=1)))
-y_pred_test = pd.DataFrame(predictions_assembled_test).T.mean(axis=1)
+    def predict(self, X, coef):
+        X_p = np.copy(X)
+        for i, pred in enumerate(X_p):
+            if pred < coef[0]:
+                X_p[i] = 3
+            elif pred >= coef[0] and pred < coef[1]:
+                X_p[i] = 4
+            elif pred >= coef[1] and pred < coef[2]:
+                X_p[i] = 5
+            elif pred >= coef[2] and pred < coef[3]:
+                X_p[i] = 6
+            elif pred >= coef[3] and pred < coef[4]:
+                X_p[i] = 7
+            else:
+                X_p[i] = 8
+        return X_p
+
+    def coefficients(self):
+        return self.coef_['x']
+    
+def scorer(estimator, X, original_labels):
+    regression_predictions = estimator.predict(X)
+    optR = OptimizedRounder()
+    optR.fit(regression_predictions, original_labels)
+    y_pred = optR.predict(regression_predictions, optR.coefficients())
+    return cohen_kappa_score(original_labels, y_pred, weights='quadratic')
 
 
-# %%
-sub = pd.read_csv('sample_submission.csv')
-sub['Class'] = y_pred_test
-now = time.strftime("%Y-%m-%d %H_%M_%S")
-sub.to_csv(f'submission{now}.csv', index=False)
+results = []
+val_predictions = pd.DataFrame()
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format('Model', 'CV mean', 'CV std', 'CV min', 'Time', 'Train', 'Val'))
+for model_name, model in regressors.items():
+    t0 = time.time()
+    scores_cv = cross_val_score(model, X_train, y_train, cv=cv, scoring=scorer, n_jobs=-1)
+    results.append(scores_cv)
+    model.fit(X_train, y_train)
+    score_train = scorer(model, X_train, y_train)
+    score_val = scorer(model, X_val, y_val)
+    val_predictions[model_name] = model.predict(X_val)
+    
+    row = ['%s' % model_name, 
+           '%.3f' % scores_cv.mean(), 
+           '%.3f' % scores_cv.std(),
+           '%.3f' % (scores_cv.mean() - scores_cv.std()),
+           '%.3f' % (time.time() - t0),
+           '%.3f' % score_train,
+           '%.3f' % score_val
+           ]
+    print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format(*row))
 
-# %%
+plt.figure(figsize=(25, 15))
+plt.boxplot(results, labels=regressors.keys(), showmeans=True)
+plt.show()
