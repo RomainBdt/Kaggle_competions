@@ -10,22 +10,8 @@ import scipy as sp
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 
-# import classifiers
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, AdaBoostClassifier, GradientBoostingClassifier, BaggingClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from lightgbm import LGBMClassifier
-from xgboost import XGBClassifier
-from catboost import CatBoostClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.linear_model import LogisticRegression, RidgeClassifier, SGDClassifier, PassiveAggressiveClassifier, Perceptron, RidgeClassifier, LogisticRegression
-from sklearn.svm import SVC, LinearSVC, NuSVC
-from sklearn.naive_bayes import GaussianNB, BernoulliNB, MultinomialNB, ComplementNB
-from sklearn.gaussian_process import GaussianProcessClassifier
-from sklearn.neural_network import MLPClassifier
-from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis, LinearDiscriminantAnalysis
-
 # import regressors
-from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, AdaBoostRegressor, GradientBoostingRegressor, BaggingRegressor
+from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor, AdaBoostRegressor, GradientBoostingRegressor, BaggingRegressor, StackingRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor, XGBRFRegressor
@@ -47,7 +33,7 @@ X_test.drop('Id', axis=1, inplace=True)
 len_test = X_test.shape[0]
 red_wine = pd.read_csv('datasets/winequality-red.csv')
 
-RUN_FOR_FINAL_PREDICTION = True
+RUN_FOR_FINAL_PREDICTION = False
 
 # Split data
 X_train, X_val = train_test_split(train, test_size=0.2, random_state=42, stratify=train['quality'])
@@ -107,95 +93,19 @@ if RUN_FOR_FINAL_PREDICTION:
     X_train = pd.concat([X_train, X_val]).reset_index(drop=True)
     y_train = pd.concat([y_train, y_val]).reset_index(drop=True)
     
-# Standardize
-# scaler = StandardScaler()
-# X_train = scaler.fit_transform(X_train)
-# X_val = scaler.transform(X_val)
-# X_test = scaler.transform(X_test)
-
-# PCA (does not improve score)
-# from sklearn.decomposition import PCA
-# pca = PCA()
-# X_train = pca.fit_transform(X_train)
-# X_val = pca.transform(X_val)
-# X_test = pca.transform(X_test)
-
-# %% Classifiers
-
-# classifiers = {
-#     'LGBMClassifier': LGBMClassifier(random_state=42, n_jobs=-1),
-#     'XGBClassifier': XGBClassifier(random_state=42, n_jobs=-1),
-#     # 'CatBoostClassifier': CatBoostClassifier(random_state=42, silent=True),
-#     'RandomForestClassifier': RandomForestClassifier(random_state=42, n_jobs=-1),
-#     'ExtraTreesClassifier': ExtraTreesClassifier(random_state=42, n_jobs=-1),
-#     # 'AdaBoostClassifier': AdaBoostClassifier(random_state=42),
-#     'GradientBoostingClassifier': GradientBoostingClassifier(random_state=42),
-#     'BaggingClassifier': BaggingClassifier(random_state=42, n_jobs=-1),
-#     'KNeighborsClassifier': KNeighborsClassifier(n_jobs=-1),
-#     # 'DecisionTreeClassifier': DecisionTreeClassifier(random_state=42),
-#     'GaussianNB': GaussianNB(),
-#     'LinearDiscriminantAnalysis': LinearDiscriminantAnalysis(),
-#     'QuadraticDiscriminantAnalysis': QuadraticDiscriminantAnalysis(),
-#     'LogisticRegression': LogisticRegression(random_state=42, n_jobs=-1),
-#     'SVC': SVC(random_state=42, gamma='scale'),
-#     # 'NuSVC': NuSVC(random_state=42, probability=True, gamma='scale'),
-#     'LinearSVC': LinearSVC(random_state=42, max_iter=10000),
-#     'MLPClassifier': MLPClassifier(random_state=42, max_iter=1000),
-#     'RidgeClassifier': RidgeClassifier(random_state=42),
-#     # 'SGDClassifier': SGDClassifier(random_state=42, max_iter=1000, tol=1e-3),
-#     # 'PassiveAggressiveClassifier': PassiveAggressiveClassifier(random_state=42, max_iter=1000, tol=1e-3),
-#     # 'Perceptron': Perceptron(random_state=42, max_iter=1000, tol=1e-3),
-#     'GaussianProcessClassifier': GaussianProcessClassifier(random_state=42),
-#     # 'BernoulliNB': BernoulliNB(),
-#     # 'ComplementNB': ComplementNB(),
-#     # 'MultinomialNB': MultinomialNB(),
-#     # 'DummyClassifier': DummyClassifier(random_state=42),  
-# }
-
-# def scorer(estimator, X, y):
-#     y_pred = estimator.predict(X)
-#     return cohen_kappa_score(y, y_pred, weights='quadratic')
-
-# import time
-
-# results = []
-# cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-# print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format('Model', 'CV mean', 'CV std', 'CV min', 'Time', 'Train', 'Val'))
-# for model_name, model in classifiers.items():
-#     t0 = time.time()
-#     scores_cv = cross_val_score(model, X_train, y_train, cv=cv, scoring=scorer, n_jobs=-1)
-#     results.append(scores_cv)
-#     model.fit(X_train, y_train)
-#     score_train = scorer(model, X_train, y_train)
-#     score_val = scorer(model, X_val, y_val)
-#     row = ['%s' % model_name, 
-#            '%.3f' % scores_cv.mean(), 
-#            '%.3f' % scores_cv.std(),
-#            '%.3f' % (scores_cv.mean() - scores_cv.std()),
-#            '%.3f' % (time.time() - t0),
-#            '%.3f' % score_train,
-#            '%.3f' % score_val
-#            ]
-#     print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format(*row))
-
-# plt.figure(figsize=(25, 15))
-# plt.boxplot(results, labels=classifiers.keys(), showmeans=True)
-# plt.show()
-
-
 
 # %% Regressors
 
 regressors = {
     # 'LGBMRegressor1': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='gbdt'),
-    # 'LGBMRegressor2': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart'),
+    'LGBMRegressor2': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart'),
     # 'LGBMRegressor3': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='goss'),
     'LGBMRegressor4': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='rf', subsample=.632, subsample_freq=1),
     # 'LGBMRegressor5': LGBMRegressor(random_state=42, n_jobs=-1, class_weight='balanced'),
     # 'LGBMRegressor6': LGBMRegressor(random_state=42, n_jobs=-1, subsample=0.7),
     # 'LGBMRegressor7': LGBMRegressor(random_state=42, n_jobs=-1, colsample_bytree=0.7),
     # 'LGBMRegressor8': LGBMRegressor(random_state=42, n_jobs=-1, subsample=0.7, colsample_bytree=0.7),
-    # 'LGBMRegressor9': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart', colsample_bytree=0.7),
+    'LGBMRegressor9': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart', colsample_bytree=0.7),
     # 'XGBRegressor1': XGBRegressor(random_state=42, n_jobs=-1),
     # 'XGBRegressor2': XGBRegressor(random_state=42, n_jobs=-1, booster='dart'),
     # 'XGBRegressor3': XGBRegressor(random_state=42, n_jobs=-1, booster='gblinear'),
@@ -420,4 +330,78 @@ sub = pd.read_csv('submissions/sample_submission.csv')
 sub['quality'] = y_pred_test
 now = time.strftime("%Y-%m-%d %H_%M_%S")
 sub.to_csv(f'submissions/submission{now}.csv', index=False)
+# %%
+
+# %% Stacking
+estimators = [
+    ('LGBMRandomForestRegressor', LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='rf', subsample=.632, subsample_freq=1)),
+    ('XGBRandomForestRegressor', XGBRFRegressor(random_state=42, n_jobs=-1)),
+    ('RandomForestRegressor', RandomForestRegressor(random_state=42, n_jobs=-1)),
+    ('ExtraTreesRegressor', ExtraTreesRegressor(random_state=42, n_jobs=-1))
+]
+
+model = StackingRegressor(
+    estimators=estimators, 
+    final_estimator=Ridge(random_state=42),
+    cv=cv,
+    n_jobs=-1,
+    verbose=10
+    )
+
+def make_rounded_predictions(model, X_train, y_train, X_val):
+    # round predictions for validation and test sets
+    optR = OptimizedRounder_v2()
+    optR.fit(model.predict(X_train), y_train)
+
+    y_pred_val = model.predict(X_val)
+    y_pred_val = optR.predict(y_pred_val, optR.coefficients())
+    return y_pred_val
+    
+model.fit(X_train, y_train)
+y_pred_val = make_rounded_predictions(model, X_train, y_train, X_val)
+print(cohen_kappa_score(y_val, y_pred_val, weights='quadratic'))
+
+# %%
+# pandas deactivate future warnings
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
+# %% Train models on subsets of data and make predictions
+
+test_predictions = pd.DataFrame()
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+print('{: >30} {: >10} {: >10} {: >10}'.format('Model', 'Time', 'Train', 'Val'))
+
+for model_name, model in regressors.items():
+    i = 0
+    for train_index, val_index in cv.split(X_train, y_train):
+        t0 = time.time()
+        
+        X = X_train.iloc[train_index]
+        y = y_train.iloc[train_index]
+        X_val_fold = X_train.iloc[val_index]
+        y_val_fold = y_train.iloc[val_index]
+
+        model.fit(X, y)
+        score_train = scorer(model, X, y)
+        score_val = scorer(model, X_val_fold, y_val_fold)
+        
+        # round predictions for test sets
+        optR = OptimizedRounder_v2()
+        optR.fit(model.predict(X), y)
+        y_pred_test = model.predict(X_test)
+        y_pred_test = optR.predict(y_pred_test, optR.coefficients())
+        test_predictions[model_name + str(i)] = y_pred_test
+        
+        row = ['%s' % model_name, 
+            '%.3f' % (time.time() - t0),
+            '%.3f' % score_train,
+            '%.3f' % score_val
+            ]
+        print('{: >30} {: >10} {: >10} {: >10}'.format(*row))
+        i += 1
+
+
+
+
 # %%
