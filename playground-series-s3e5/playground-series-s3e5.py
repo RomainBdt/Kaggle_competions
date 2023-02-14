@@ -23,6 +23,10 @@ from sklearn.linear_model import LassoLars, LassoLarsIC
 from sklearn.neural_network import MLPRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor
 
+# pandas deactivate future warnings
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 # %%
 train = pd.read_csv('datasets/train.csv')
 train.drop('Id', axis=1, inplace=True)
@@ -33,7 +37,7 @@ X_test.drop('Id', axis=1, inplace=True)
 len_test = X_test.shape[0]
 red_wine = pd.read_csv('datasets/winequality-red.csv')
 
-RUN_FOR_FINAL_PREDICTION = False
+RUN_FOR_FINAL_PREDICTION = True
 
 # Split data
 X_train, X_val = train_test_split(train, test_size=0.2, random_state=42, stratify=train['quality'])
@@ -98,14 +102,14 @@ if RUN_FOR_FINAL_PREDICTION:
 
 regressors = {
     # 'LGBMRegressor1': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='gbdt'),
-    'LGBMRegressor2': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart'),
+    # 'LGBMRegressor2': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart'),
     # 'LGBMRegressor3': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='goss'),
     'LGBMRegressor4': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='rf', subsample=.632, subsample_freq=1),
     # 'LGBMRegressor5': LGBMRegressor(random_state=42, n_jobs=-1, class_weight='balanced'),
     # 'LGBMRegressor6': LGBMRegressor(random_state=42, n_jobs=-1, subsample=0.7),
     # 'LGBMRegressor7': LGBMRegressor(random_state=42, n_jobs=-1, colsample_bytree=0.7),
     # 'LGBMRegressor8': LGBMRegressor(random_state=42, n_jobs=-1, subsample=0.7, colsample_bytree=0.7),
-    'LGBMRegressor9': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart', colsample_bytree=0.7),
+    # 'LGBMRegressor9': LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='dart', colsample_bytree=0.7),
     # 'XGBRegressor1': XGBRegressor(random_state=42, n_jobs=-1),
     # 'XGBRegressor2': XGBRegressor(random_state=42, n_jobs=-1, booster='dart'),
     # 'XGBRegressor3': XGBRegressor(random_state=42, n_jobs=-1, booster='gblinear'),
@@ -114,7 +118,7 @@ regressors = {
     'XGBRandomForestRegressor': XGBRFRegressor(random_state=42, n_jobs=-1),
     # 'CatBoostRegressor': CatBoostRegressor(random_state=42, silent=True),
     'RandomForestRegressor': RandomForestRegressor(random_state=42, n_jobs=-1),
-    'ExtraTreesRegressor': ExtraTreesRegressor(random_state=42, n_jobs=-1),
+    # 'ExtraTreesRegressor': ExtraTreesRegressor(random_state=42, n_jobs=-1),
     # 'AdaBoostRegressor': AdaBoostRegressor(random_state=42),
     # 'GradientBoostingRegressor': GradientBoostingRegressor(random_state=42),
     # 'BaggingRegressor': BaggingRegressor(random_state=42, n_jobs=-1),
@@ -145,57 +149,21 @@ regressors = {
     # 'Lars': Lars(),
     # 'LassoLars': LassoLars(),
     # 'LassoLarsIC': LassoLarsIC(normalize=False),
+    # 'StackingRegressor': StackingRegressor(
+    #         estimators=[
+    #             ('LGBMRandomForestRegressor', LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='rf', subsample=.632, subsample_freq=1)),
+    #             ('XGBRandomForestRegressor', XGBRFRegressor(random_state=42, n_jobs=-1)),
+    #             ('RandomForestRegressor', RandomForestRegressor(random_state=42, n_jobs=-1)),
+    #             # ('ExtraTreesRegressor', ExtraTreesRegressor(random_state=42, n_jobs=-1))
+    #             ], 
+    #         final_estimator=Ridge(random_state=42),
+    #         # cv=cv,
+    #         # n_jobs=-1,
+    #         )
 }
 
 # %% Regression with OptimizedRounder
-class OptimizedRounder(object):
-    def __init__(self):
-        self.coef_ = 0
 
-    def _kappa_loss(self, coef, X, y):
-        X_p = np.copy(X)
-        for i, pred in enumerate(X_p):
-            if pred < coef[0]:
-                X_p[i] = 0
-            elif pred >= coef[0] and pred < coef[1]:
-                X_p[i] = 1
-            elif pred >= coef[1] and pred < coef[2]:
-                X_p[i] = 2
-            elif pred >= coef[2] and pred < coef[3]:
-                X_p[i] = 3
-            elif pred >= coef[3] and pred < coef[4]:
-                X_p[i] = 4
-            else:
-                X_p[i] = 5
-
-        ll = cohen_kappa_score(y, X_p, weights='quadratic')
-        return -ll
-
-    def fit(self, X, y):
-        loss_partial = partial(self._kappa_loss, X=X, y=y)
-        initial_coef = [0.5, 1.5, 2.5, 3.5, 4.5]
-        self.coef_ = sp.optimize.minimize(loss_partial, initial_coef, method='nelder-mead')
-
-    def predict(self, X, coef):
-        X_p = np.copy(X)
-        for i, pred in enumerate(X_p):
-            if pred < coef[0]:
-                X_p[i] = 0
-            elif pred >= coef[0] and pred < coef[1]:
-                X_p[i] = 1
-            elif pred >= coef[1] and pred < coef[2]:
-                X_p[i] = 2
-            elif pred >= coef[2] and pred < coef[3]:
-                X_p[i] = 3
-            elif pred >= coef[3] and pred < coef[4]:
-                X_p[i] = 4
-            else:
-                X_p[i] = 5
-        return X_p
-
-    def coefficients(self):
-        return self.coef_['x']
-    
 class OptimizedRounder_v2(object):
     def __init__(self):
         self.coef_ = 0
@@ -223,104 +191,74 @@ def scorer(estimator, X, original_labels):
     y_pred = optR.predict(regression_predictions, optR.coefficients())
     return cohen_kappa_score(original_labels, y_pred, weights='quadratic')
 
-results = []
+def predict_score(estimator, optR, X, y_true=None):
+    """Predict and round prediction with OptimizedRounder_v2
+    return y_pred and cohen kappa score if y_true is present """
+    
+    regression_predictions = estimator.predict(X)
+    y_pred = optR.predict(regression_predictions, optR.coefficients())
+    
+    if y_true is not None:
+        score = cohen_kappa_score(y_true, y_pred, weights='quadratic')
+    else: 
+        score = None
+    return y_pred, score
+
+
+# %% Train models on subsets of data and make predictions
 val_predictions = pd.DataFrame()
 test_predictions = pd.DataFrame()
+results = []
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format('Model', 'CV mean', 'CV std', 'CV min', 'Time', 'Train', 'Val'))
+print('{: >30} {: >12} {: >12} {: >12} {: >12} {: >12} {: >12} {: >12}'.format(
+    'Model', 'mean_cv_fold', 'std_cv_fold', 'min_cv_fold', 'mean_val', 'std_val', 'min_val', 'time'
+    ))
+
 for model_name, model in regressors.items():
     t0 = time.time()
-    scores_cv = cross_val_score(model, X_train, y_train, cv=cv, scoring=scorer, n_jobs=-1)
-    results.append(scores_cv)
-    model.fit(X_train, y_train)
-    score_train = scorer(model, X_train, y_train)
-    score_val = scorer(model, X_val, y_val)
-    
-    # round predictions for validation and test sets
-    optR = OptimizedRounder_v2()
-    optR.fit(model.predict(X_train), y_train)
-    
-    y_pred_val = model.predict(X_val)
-    y_pred_val = optR.predict(y_pred_val, optR.coefficients())
-    val_predictions[model_name] = y_pred_val
-    
-    y_pred_test = model.predict(X_test)
-    y_pred_test = optR.predict(y_pred_test, optR.coefficients())
-    test_predictions[model_name] = y_pred_test
-    
+    i = 0
+    scores_cv = []
+    scores_val = [] 
+    for train_index, val_index in cv.split(X_train, y_train):
+        X_train_fold = X_train.iloc[train_index]
+        y_train_fold = y_train.iloc[train_index]
+        X_val_fold = X_train.iloc[val_index]
+        y_val_fold = y_train.iloc[val_index]
+
+        # fit model on training fold
+        model.fit(X_train_fold, y_train_fold)
+        
+        # round predictions for test sets
+        optR = OptimizedRounder_v2()
+        optR.fit(model.predict(X_train_fold), y_train_fold)
+        
+        # eval on test fold
+        y_val_fold_pred, score_val_fold = predict_score(model, optR, X_val_fold, y_val_fold)
+        y_val_pred, score_val = predict_score(model, optR, X_val, y_val)
+        y_test_pred, _ = predict_score(model, optR, X_test)
+        
+        scores_cv.append(score_val_fold)
+        scores_val.append(score_val)
+        val_predictions[model_name + str(i)] = y_val_pred
+        test_predictions[model_name + str(i)] = y_test_pred
+        i += 1
+        
     row = ['%s' % model_name, 
-           '%.3f' % scores_cv.mean(), 
-           '%.3f' % scores_cv.std(),
-           '%.3f' % (scores_cv.mean() - scores_cv.std()),
-           '%.3f' % (time.time() - t0),
-           '%.3f' % score_train,
-           '%.3f' % score_val
-           ]
-    print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format(*row))
+        '%.3f' % np.mean(scores_cv), 
+        '%.3f' % np.std(scores_cv),
+        '%.3f' % (np.mean(scores_cv) - np.std(scores_cv)),
+        '%.3f' % np.mean(scores_val), 
+        '%.3f' % np.std(scores_val),
+        '%.3f' % (np.mean(scores_val) - np.std(scores_val)),
+        '%.3f' % (time.time() - t0),
+        ]
+    print('{: >30} {: >12} {: >12} {: >12} {: >12} {: >12} {: >12} {: >12}'.format(*row))
+    results.append(np.array(scores_cv))
 
 plt.figure(figsize=(25, 15))
 plt.boxplot(results, labels=regressors.keys(), showmeans=True)
 plt.show()
 
-# %% Regression with distributed predictions
-# def distribute_predictions(y_true, y_pred):
-#     y_pred_sorted = pd.Series(y_pred).sort_values()    
-#     freq_by_quality = (y_true.value_counts() / len(y_true)).sort_index()
-
-#     # map quality to cumulative frequency
-#     cum_sum_by_quality = freq_by_quality.cumsum()
-
-#     # make new predictions with the same distribution as the original labels
-#     y_pred_distributed = pd.Series([0] * len(y_pred_sorted))
-#     start_index = 0
-#     for quality, freq_threshold in cum_sum_by_quality.items():
-#         end_index = round(freq_threshold * len(y_pred_sorted))
-#         # print(quality, start_index, end_index)
-#         y_pred_distributed.iloc[start_index:end_index] = quality
-#         start_index = end_index
-#     y_pred_distributed.index = y_pred_sorted.index
-#     return y_pred_distributed.sort_index()
-
-# def scorer(estimator, X, original_labels):
-#     regression_predictions = estimator.predict(X)
-#     y_pred = distribute_predictions(original_labels, regression_predictions)
-#     return cohen_kappa_score(original_labels, y_pred, weights='quadratic')
-
-# results = []
-# val_predictions = pd.DataFrame()
-# test_predictions = pd.DataFrame()
-
-# cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-# print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format('Model', 'CV mean', 'CV std', 'CV min', 'Time', 'Train', 'Val'))
-# for model_name, model in regressors.items():
-#     t0 = time.time()
-#     scores_cv = cross_val_score(model, X_train, y_train, cv=cv, scoring=scorer, n_jobs=-1)
-#     results.append(scores_cv)
-#     model.fit(X_train, y_train)
-#     score_train = scorer(model, X_train, y_train)
-#     score_val = scorer(model, X_val, y_val)
-#     pred_val = model.predict(X_val)
-#     pred_val = distribute_predictions(y_train, pred_val)
-#     val_predictions[model_name] = pred_val
-    
-#     if RUN_FOR_FINAL_PREDICTION:
-#         pred_test = model.predict(X_test)
-#         pred_test = distribute_predictions(y, pred_test)
-#         test_predictions[model_name] = pred_test
-    
-#     row = ['%s' % model_name, 
-#            '%.3f' % scores_cv.mean(), 
-#            '%.3f' % scores_cv.std(),
-#            '%.3f' % (scores_cv.mean() - scores_cv.std()),
-#            '%.3f' % (time.time() - t0),
-#            '%.3f' % score_train,
-#            '%.3f' % score_val
-#            ]
-#     print('{: >30} {: >10} {: >10} {: >10} {: >10} {: >10} {: >10}'.format(*row))
-
-# plt.figure(figsize=(25, 15))
-# plt.boxplot(results, labels=regressors.keys(), showmeans=True)
-# plt.show()
 # %% Submission
 y_pred_test = test_predictions.mean(axis=1).round().astype(int)
 # remap predictions to original scale
@@ -330,78 +268,3 @@ sub = pd.read_csv('submissions/sample_submission.csv')
 sub['quality'] = y_pred_test
 now = time.strftime("%Y-%m-%d %H_%M_%S")
 sub.to_csv(f'submissions/submission{now}.csv', index=False)
-# %%
-
-# %% Stacking
-estimators = [
-    ('LGBMRandomForestRegressor', LGBMRegressor(random_state=42, n_jobs=-1, boosting_type='rf', subsample=.632, subsample_freq=1)),
-    ('XGBRandomForestRegressor', XGBRFRegressor(random_state=42, n_jobs=-1)),
-    ('RandomForestRegressor', RandomForestRegressor(random_state=42, n_jobs=-1)),
-    ('ExtraTreesRegressor', ExtraTreesRegressor(random_state=42, n_jobs=-1))
-]
-
-model = StackingRegressor(
-    estimators=estimators, 
-    final_estimator=Ridge(random_state=42),
-    cv=cv,
-    n_jobs=-1,
-    verbose=10
-    )
-
-def make_rounded_predictions(model, X_train, y_train, X_val):
-    # round predictions for validation and test sets
-    optR = OptimizedRounder_v2()
-    optR.fit(model.predict(X_train), y_train)
-
-    y_pred_val = model.predict(X_val)
-    y_pred_val = optR.predict(y_pred_val, optR.coefficients())
-    return y_pred_val
-    
-model.fit(X_train, y_train)
-y_pred_val = make_rounded_predictions(model, X_train, y_train, X_val)
-print(cohen_kappa_score(y_val, y_pred_val, weights='quadratic'))
-
-# %%
-# pandas deactivate future warnings
-import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
-
-# %% Train models on subsets of data and make predictions
-
-test_predictions = pd.DataFrame()
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-print('{: >30} {: >10} {: >10} {: >10}'.format('Model', 'Time', 'Train', 'Val'))
-
-for model_name, model in regressors.items():
-    i = 0
-    for train_index, val_index in cv.split(X_train, y_train):
-        t0 = time.time()
-        
-        X = X_train.iloc[train_index]
-        y = y_train.iloc[train_index]
-        X_val_fold = X_train.iloc[val_index]
-        y_val_fold = y_train.iloc[val_index]
-
-        model.fit(X, y)
-        score_train = scorer(model, X, y)
-        score_val = scorer(model, X_val_fold, y_val_fold)
-        
-        # round predictions for test sets
-        optR = OptimizedRounder_v2()
-        optR.fit(model.predict(X), y)
-        y_pred_test = model.predict(X_test)
-        y_pred_test = optR.predict(y_pred_test, optR.coefficients())
-        test_predictions[model_name + str(i)] = y_pred_test
-        
-        row = ['%s' % model_name, 
-            '%.3f' % (time.time() - t0),
-            '%.3f' % score_train,
-            '%.3f' % score_val
-            ]
-        print('{: >30} {: >10} {: >10} {: >10}'.format(*row))
-        i += 1
-
-
-
-
-# %%
