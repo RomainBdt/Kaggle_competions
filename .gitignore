@@ -171,3 +171,15 @@ playground-series-s3e9/playground-series-s3e9_pycaret.ipynb
 playground-series-s3e9/playground-series-s3e9_model copy.ipynb
 
 playground-series-s3e9/playground-series-s3e9_EDA.ipynb
+
+playground-series-s3e12/catboost_info/
+
+playground-series-s3e12/dataset/
+
+playground-series-s3e12/experiments/
+
+playground-series-s3e12/plots/
+
+playground-series-s3e12/submissions/
+
+*.xlsx
